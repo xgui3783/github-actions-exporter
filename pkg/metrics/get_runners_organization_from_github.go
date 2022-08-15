@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"github-actions-exporter/pkg/config"
+	"github-actions-exporter/pkg/skipQuery"
 	"log"
 	"strconv"
 	"time"
@@ -23,13 +24,22 @@ var (
 
 // getRunnersOrganizationFromGithub - return information about runners and their status for an organization
 func getRunnersOrganizationFromGithub() {
+	namespace := "getRunnersOrganizationFromGithub"
+	_, ok := skipQuery.SkipMap[namespace];
+	if !ok {
+		skipQuery.SkipMap[namespace] = 0
+	}
+
 	for {
 		for _, orga := range config.Github.Organizations.Value() {
 			opt := &github.ListOptions{PerPage: 10}
 			for {
 				resp, rr, err := client.Actions.ListOrganizationRunners(context.Background(), orga, opt)
 				if err != nil {
+					skipQuery.SkipMap[namespace] = skipQuery.SkipMap[namespace] + 1
+					log.Printf("huh? %d", skipQuery.SkipMap[namespace])
 					log.Printf("ListOrganizationRunners error for %s: %s", orga, err.Error())
+					break
 				} else {
 					for _, runner := range resp.Runners {
 						if runner.GetStatus() == "online" {
@@ -45,7 +55,9 @@ func getRunnersOrganizationFromGithub() {
 				}
 			}
 		}
-
+		if skipQuery.SkipMap[namespace] > skipQuery.Attempts {
+			break
+		}
 		time.Sleep(time.Duration(config.Github.Refresh) * time.Second)
 		runnersOrganizationGauge.Reset()
 	}

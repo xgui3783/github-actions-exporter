@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"github-actions-exporter/pkg/config"
+	"github-actions-exporter/pkg/skipQuery"
 	"log"
 	"strconv"
 	"strings"
@@ -23,11 +24,19 @@ var (
 
 // getRunnersFromGithub - return information about runners and their status for a specific repo
 func getRunnersFromGithub() {
+
+	namespace := "getRunnersFromGithub"
+	_, ok := skipQuery.SkipMap[namespace];
+	if !ok {
+		skipQuery.SkipMap[namespace] = 0
+	}
+
 	for {
 		for _, repo := range config.Github.Repositories.Value() {
 			r := strings.Split(repo, "/")
 			resp, _, err := client.Actions.ListRunners(context.Background(), r[0], r[1], nil)
 			if err != nil {
+				skipQuery.SkipMap[namespace] = skipQuery.SkipMap[namespace] + 1
 				log.Printf("ListRunners error for %s: %s", repo, err.Error())
 			} else {
 				for _, runner := range resp.Runners {
@@ -40,6 +49,9 @@ func getRunnersFromGithub() {
 			}
 		}
 
+		if skipQuery.SkipMap[namespace] > skipQuery.Attempts {
+			break
+		}
 		time.Sleep(time.Duration(config.Github.Refresh) * time.Second)
 	}
 }
